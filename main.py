@@ -330,36 +330,7 @@ def update_game(dt):
     """Update game logic"""
     global score, lives, game_state
     
-    # Get keyboard input for player movement
-    keys = pygame.key.get_pressed()
-    
-    # Handle horizontal movement
-    if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-        player.vel_x = -player.move_speed
-    elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-        player.vel_x = player.move_speed
-    else:
-        # Only reset horizontal velocity if not dashing
-        if not player.dashing:
-            player.vel_x = 0
-    
-    # Handle dash
-    if (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]) and player.dash_available and not player.dashing:
-        player.dashing = True
-        player.dash_available = False
-        player.dash_timer = player.dash_duration
-        player.dash_cooldown = 1.0
-        
-        # Dash in the direction the player is facing
-        if player.facing_right:
-            player.vel_x = player.dash_power
-        else:
-            player.vel_x = -player.dash_power
-        
-        # Slight vertical boost during dash
-        player.vel_y = -200
-    
-    # Update player
+    # Let player class handle its own keyboard input
     player.update(platforms, dt)
     
     # Update platforms
@@ -459,6 +430,45 @@ def update_game(dt):
         else:
             game_state = GameState.GAME_OVER
 
+def handle_events():
+    """Handle pygame events"""
+    global game_state, current_level
+    
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+        
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                if game_state == GameState.PLAYING:
+                    game_state = GameState.PAUSE
+                elif game_state == GameState.PAUSE:
+                    game_state = GameState.PLAYING
+            
+            elif event.key == pygame.K_SPACE:
+                if game_state == GameState.TITLE:
+                    game_state = GameState.PLAYING
+                    initialize_game()
+                elif game_state == GameState.LEVEL_COMPLETE:
+                    current_level += 1
+                    if current_level >= total_levels:
+                        game_state = GameState.VICTORY
+                    else:
+                        game_state = GameState.PLAYING
+                        initialize_game()
+                elif game_state == GameState.GAME_OVER or game_state == GameState.VICTORY:
+                    game_state = GameState.TITLE
+                elif game_state == GameState.PLAYING:
+                    # Handle jump when key is pressed (not held)
+                    player.jump()
+                elif game_state == GameState.PAUSE:
+                    game_state = GameState.PLAYING
+        
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if game_state == GameState.PLAYING and event.button == 1:  # Left mouse button
+                player.shoot(bullets)
+
 def draw_game():
     """Draw the game state"""
     # Fill background with sky color based on level theme
@@ -547,7 +557,6 @@ def draw_title_screen():
     # Instructions
     start_text = medium_font.render("Press SPACE to Start", True, WHITE)
     screen.blit(start_text, (SCREEN_WIDTH // 2 - start_text.get_width() // 2, 350))
-    
     controls_text = small_font.render("WASD/Arrows: Move   SPACE: Jump   SHIFT: Dash   LEFT MOUSE: Shoot", True, WHITE)
     screen.blit(controls_text, (SCREEN_WIDTH // 2 - controls_text.get_width() // 2, 450))
     
@@ -582,11 +591,11 @@ def draw_game_over():
     score_text = large_font.render(f"Final Score: {score}", True, WHITE)
     screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, 280))
     
-    restart_text = medium_font.render("Press SPACE to restart", True, WHITE)
+    restart_text = medium_font.render("Press SPACE to play again", True, WHITE)
     screen.blit(restart_text, (SCREEN_WIDTH // 2 - restart_text.get_width() // 2, 380))
 
 def draw_pause_screen():
-    """Draw pause screen"""
+    """Draw pause screen overlay"""
     overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 150))
     screen.blit(overlay, (0, 0))
@@ -594,12 +603,14 @@ def draw_pause_screen():
     pause_text = large_font.render("PAUSED", True, WHITE)
     screen.blit(pause_text, (SCREEN_WIDTH // 2 - pause_text.get_width() // 2, 200))
     
-    resume_text = medium_font.render("Press ESC to resume", True, WHITE)
+    resume_text = medium_font.render("Press SPACE or ESC to resume", True, WHITE)
     screen.blit(resume_text, (SCREEN_WIDTH // 2 - resume_text.get_width() // 2, 300))
 
 def draw_victory_screen():
     """Draw victory screen"""
-    screen.fill((20, 40, 80))
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 200))
+    screen.blit(overlay, (0, 0))
     
     victory_text = title_font.render("VICTORY!", True, GOLD)
     screen.blit(victory_text, (SCREEN_WIDTH // 2 - victory_text.get_width() // 2, 150))
@@ -607,53 +618,14 @@ def draw_victory_screen():
     congrats_text = large_font.render("Congratulations!", True, WHITE)
     screen.blit(congrats_text, (SCREEN_WIDTH // 2 - congrats_text.get_width() // 2, 250))
     
-    score_text = medium_font.render(f"Final Score: {score}", True, WHITE)
+    score_text = large_font.render(f"Final Score: {score}", True, WHITE)
     screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, 320))
     
     restart_text = medium_font.render("Press SPACE to play again", True, WHITE)
-    screen.blit(restart_text, (SCREEN_WIDTH // 2 - restart_text.get_width() // 2, 400))
-
-def handle_events():
-    """Handle pygame events"""
-    global game_state, current_level
-    
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-        
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:
-                if game_state == GameState.PLAYING:
-                    game_state = GameState.PAUSE
-                elif game_state == GameState.PAUSE:
-                    game_state = GameState.PLAYING
-            
-            elif event.key == pygame.K_SPACE:
-                if game_state == GameState.TITLE:
-                    game_state = GameState.PLAYING
-                    initialize_game()
-                elif game_state == GameState.LEVEL_COMPLETE:
-                    current_level += 1
-                    if current_level >= total_levels:
-                        game_state = GameState.VICTORY
-                    else:
-                        game_state = GameState.PLAYING
-                        initialize_game()
-                elif game_state == GameState.GAME_OVER or game_state == GameState.VICTORY:
-                    game_state = GameState.TITLE
-            
-            # Jump when pressing space in playing mode
-            if game_state == GameState.PLAYING and (event.key == pygame.K_SPACE or event.key == pygame.K_w or event.key == pygame.K_UP):
-                player.jump()
-        
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if game_state == GameState.PLAYING and event.button == 1:  # Left mouse button
-                player.shoot(bullets)
+    screen.blit(restart_text, (SCREEN_WIDTH // 2 - restart_text.get_width() // 2, 380))
 
 # Main game loop
 while True:
-    # Calculate delta time
     current_time = pygame.time.get_ticks()
     dt = (current_time - last_time) / 1000.0  # Convert to seconds
     last_time = current_time

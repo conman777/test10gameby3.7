@@ -76,22 +76,61 @@ class Enemy:
         dy = player.y - self.y
         dist = math.sqrt(dx*dx + dy*dy)
         
-        if dist > 50:  # Don't get too close
-            self.vel_x = (dx/dist) * self.move_speed
+        # Always move towards player
+        self.vel_x = (dx/dist) * self.move_speed
+        
+        # Improved platform navigation
+        # Check if there's ground ahead
+        ground_check_x = self.x + self.vel_x * dt + (self.width/2 * (1 if self.vel_x > 0 else -1))
+        ground_check_rect = pygame.Rect(ground_check_x, self.y + self.height, 5, 50)
+        
+        has_ground = False
+        for platform in platforms:
+            if platform.rect.colliderect(ground_check_rect):
+                has_ground = True
+                break
+        
+        if not has_ground:
+            # Instead of just reversing direction, try to find a better path to the player
+            # Check if jumping would help reach the player (if player is above)
+            if player.y < self.y - 50 and self.on_ground:
+                self.vel_y = -500  # Jump to try to reach platforms above
+            else:
+                # If we can't jump to reach the player, look for the nearest platform
+                nearest_platform_dist = float('inf')
+                nearest_platform_dir = 0
+                
+                for platform in platforms:
+                    # Check platforms that are roughly at our height or below
+                    if platform.rect.top <= self.y + self.height + 100:
+                        platform_center_x = platform.rect.x + platform.rect.width / 2
+                        dist_to_platform = abs(platform_center_x - self.x)
+                        
+                        if dist_to_platform < nearest_platform_dist:
+                            nearest_platform_dist = dist_to_platform
+                            nearest_platform_dir = 1 if platform_center_x > self.x else -1
+                
+                if nearest_platform_dir != 0:
+                    # Move toward nearest platform
+                    self.vel_x = self.move_speed * nearest_platform_dir
+                else:
+                    # If no good platform found, reverse direction as a last resort
+                    self.vel_x = -self.vel_x
+        
+        # Attack player if close enough - more aggressive behavior
+        if dist < 100 and self.shoot_cooldown <= 0:  # Increased attack range from 60 to 100
+            self.shoot_cooldown = self.shoot_delay
             
-            # Simple platform navigation
-            # Check if there's ground ahead
-            ground_check_x = self.x + self.vel_x * dt + (self.width/2 * (1 if self.vel_x > 0 else -1))
-            ground_check_rect = pygame.Rect(ground_check_x, self.y + self.height, 5, 50)
+            # If very close, try to move directly toward player for melee attack
+            if dist < 60:
+                # Lunge toward player
+                self.vel_x = (dx/dist) * self.move_speed * 1.5
+                
+                # Small jump if player is slightly above
+                if player.y < self.y - 10 and self.on_ground:
+                    self.vel_y = -300
             
-            has_ground = False
-            for platform in platforms:
-                if platform.rect.colliderect(ground_check_rect):
-                    has_ground = True
-                    break
-            
-            if not has_ground:
-                self.vel_x = -self.vel_x
+            # The actual damage is handled in main.py through collision detection
         
         # Apply gravity
         self.vel_y += GRAVITY * dt
@@ -119,49 +158,97 @@ class Enemy:
         dy = player.y - self.y
         dist = math.sqrt(dx*dx + dy*dy)
         
-        if dist > 30:
-            self.vel_x = (dx/dist) * self.move_speed
-            
-            # Jump if near a wall or gap
-            ground_check_x = self.x + self.vel_x * dt + (self.width/2 * (1 if self.vel_x > 0 else -1))
-            ground_check_rect = pygame.Rect(ground_check_x, self.y + self.height, 5, 50)
-            wall_check_rect = pygame.Rect(ground_check_x, self.y, 5, self.height)
-            
-            should_jump = False
-            for platform in platforms:
-                if platform.rect.colliderect(wall_check_rect):
-                    should_jump = True
-                    break
-            
-            has_ground = False
-            for platform in platforms:
-                if platform.rect.colliderect(ground_check_rect):
-                    has_ground = True
-                    break
-            
-            if should_jump or not has_ground:
-                if self.on_ground:
-                    self.vel_y = -500  # Jump!
+        # Always pursue the player aggressively
+        self.vel_x = (dx/dist) * self.move_speed
+        
+        # Jump if near a wall or gap
+        ground_check_x = self.x + self.vel_x * dt + (self.width/2 * (1 if self.vel_x > 0 else -1))
+        ground_check_rect = pygame.Rect(ground_check_x, self.y + self.height, 5, 50)
+        wall_check_rect = pygame.Rect(ground_check_x, self.y, 5, self.height)
+        
+        should_jump = False
+        for platform in platforms:
+            if platform.rect.colliderect(wall_check_rect):
+                should_jump = True
+                break
+        
+        has_ground = False
+        for platform in platforms:
+            if platform.rect.colliderect(ground_check_rect):
+                has_ground = True
+                break
+        
+        if should_jump or not has_ground:
+            if self.on_ground:
+                self.vel_y = -500  # Jump!
+        
+        # Jump toward player if close enough and player is above
+        if dist < 150 and dy < -50 and self.on_ground:
+            self.vel_y = -600  # Stronger jump to reach player
         
         # Rest of physics similar to basic
-        self.update_basic(dt, player, platforms)
+        # But don't call update_basic as it would override our velocity
+        # Apply gravity
+        self.vel_y += GRAVITY * dt
+        
+        # Cap falling speed
+        if self.vel_y > 800:
+            self.vel_y = 800
+        
+        # Update position
+        self.x += self.vel_x * dt
+        self.y += self.vel_y * dt
+        
+        # Update facing direction
+        if self.vel_x > 0:
+            self.facing_right = True
+        elif self.vel_x < 0:
+            self.facing_right = False
+        
+        # Handle collisions with platforms
+        self.handle_platform_collisions(platforms)
     
     def update_tank(self, dt, player, platforms):
         # Slower movement but takes more hits
         dx = player.x - self.x
+        dy = player.y - self.y
+        dist = math.sqrt(dx*dx + dy*dy)
         dist_x = abs(dx)
         
-        # Try to maintain optimal distance
-        optimal_distance = 200
+        # More aggressive approach - get closer to player
+        optimal_distance = 100  # Reduced from 200
+        
         if dist_x > optimal_distance + 50:
             self.vel_x = self.move_speed * (1 if dx > 0 else -1)
         elif dist_x < optimal_distance - 50:
             self.vel_x = -self.move_speed * (1 if dx > 0 else -1)
         else:
-            self.vel_x = 0
+            # When at optimal distance, occasionally charge at player
+            if self.shoot_cooldown <= 0:
+                self.vel_x = self.move_speed * 1.5 * (1 if dx > 0 else -1)
+                self.shoot_cooldown = self.shoot_delay * 2  # Longer cooldown for charge attack
+            else:
+                self.vel_x = 0
         
-        # Rest of physics similar to basic
-        self.update_basic(dt, player, platforms)
+        # Apply gravity and physics directly instead of calling update_basic
+        self.vel_y += GRAVITY * dt
+        
+        # Cap falling speed
+        if self.vel_y > 800:
+            self.vel_y = 800
+        
+        # Update position
+        self.x += self.vel_x * dt
+        self.y += self.vel_y * dt
+        
+        # Update facing direction
+        if self.vel_x > 0:
+            self.facing_right = True
+        elif self.vel_x < 0:
+            self.facing_right = False
+        
+        # Handle collisions with platforms
+        self.handle_platform_collisions(platforms)
     
     def update_shooter(self, dt, player, platforms, enemy_bullets):
         # Try to maintain distance and shoot at player
@@ -172,20 +259,45 @@ class Enemy:
         # Update facing direction based on player position
         self.facing_right = dx > 0
         
-        # Try to maintain optimal shooting distance
-        optimal_distance = 300
-        if dist > optimal_distance + 50:
-            self.vel_x = (dx/dist) * self.move_speed
-        elif dist < optimal_distance - 50:
-            self.vel_x = -(dx/dist) * self.move_speed
-        else:
-            self.vel_x = 0
-            # Shoot if cooldown is ready
-            if self.shoot_cooldown <= 0:
-                self.shoot(player, enemy_bullets)
+        # More aggressive shooting behavior
+        optimal_distance = 250  # Reduced from 300
         
-        # Rest of physics similar to basic
-        self.update_basic(dt, player, platforms)
+        if dist > optimal_distance + 100:
+            # Move faster toward player when far away
+            self.vel_x = (dx/dist) * self.move_speed * 1.2
+        elif dist < optimal_distance - 50:
+            # Back away, but not as quickly
+            self.vel_x = -(dx/dist) * self.move_speed * 0.8
+        else:
+            # When at good shooting distance, occasionally strafe
+            if random.random() < 0.02:  # 2% chance per frame to change direction
+                self.vel_x = (random.choice([-1, 1])) * self.move_speed * 0.5
+            else:
+                self.vel_x = 0
+        
+        # Always try to shoot if cooldown is ready, regardless of distance
+        if self.shoot_cooldown <= 0 and dist < 400:
+            self.shoot(player, enemy_bullets)
+        
+        # Apply gravity and physics directly instead of calling update_basic
+        self.vel_y += GRAVITY * dt
+        
+        # Cap falling speed
+        if self.vel_y > 800:
+            self.vel_y = 800
+        
+        # Update position
+        self.x += self.vel_x * dt
+        self.y += self.vel_y * dt
+        
+        # Update facing direction
+        if self.vel_x > 0:
+            self.facing_right = True
+        elif self.vel_x < 0:
+            self.facing_right = False
+        
+        # Handle collisions with platforms
+        self.handle_platform_collisions(platforms)
     
     def handle_platform_collisions(self, platforms):
         # Reset ground status

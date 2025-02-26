@@ -1,5 +1,6 @@
 import pygame
 import math
+import random  # Make sure random is imported
 from constants import *
 
 class Player:
@@ -155,6 +156,10 @@ class Player:
             
             # Slight vertical boost during dash
             self.vel_y = -200
+        
+        # Handle jump directly from keys (instead of only through events)
+        if (keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]) and self.on_ground:
+            self.jump()
         
         # Move the player
         self.x += self.vel_x * dt
@@ -342,8 +347,6 @@ class Player:
         return self.invulnerable
     
     def draw(self, surface):
-        # Draw the player character using geometric shapes
-        
         # Extract shape info
         torso = self.shape_info['torso']
         head = self.shape_info['head']
@@ -372,9 +375,12 @@ class Player:
             elif self.animation_state in [0, 2] and i == 1:
                 leg_y -= 5
             
-            leg_color = (max(0, self.color[0] - 30 + color_mod), 
-                        max(0, self.color[1] - 30 + color_mod), 
-                        max(0, self.color[2] - 30 + color_mod))
+            # Calculate leg color with proper capping
+            lr = min(255, max(0, int(self.color[0] - 30 + color_mod)))
+            lg = min(255, max(0, int(self.color[1] - 30 + color_mod)))
+            lb = min(255, max(0, int(self.color[2] - 30 + color_mod)))
+            leg_color = (lr, lg, lb)
+            
             pygame.draw.rect(surface, leg_color, (leg_x, leg_y, leg_w, leg_h))
             pygame.draw.rect(surface, BLACK, (leg_x, leg_y, leg_w, leg_h), 2)
         
@@ -402,19 +408,19 @@ class Player:
                 # Draw arm in shooting position if cooldown is low
                 if self.shoot_cooldown < self.shoot_delay * 0.5:
                     arm_y = torso_y + torso_h * 0.2
-                    
-            arm_color = (max(0, self.color[0] - 20 + color_mod), 
-                        max(0, self.color[1] - 20 + color_mod), 
-                        max(0, self.color[2] - 20 + color_mod))
-            pygame.draw.rect(surface, arm_color, (arm_x, arm_y, arm_w, arm_h))
+            
             pygame.draw.rect(surface, BLACK, (arm_x, arm_y, arm_w, arm_h), 2)
         
         # Draw head
         head_x, head_y, head_r = head
-        pygame.draw.circle(surface, (max(0, self.color[0] + 20 + color_mod), 
-                                    max(0, self.color[1] + 20 + color_mod), 
-                                    max(0, self.color[2] + 20 + color_mod)), 
-                          (int(head_x), int(head_y)), int(head_r))
+        
+        # Calculate head color with proper capping
+        hr = min(255, max(0, int(self.color[0] + 20 + color_mod)))
+        hg = min(255, max(0, int(self.color[1] + 20 + color_mod)))
+        hb = min(255, max(0, int(self.color[2] + 20 + color_mod)))
+        head_color = (hr, hg, hb)
+        
+        pygame.draw.circle(surface, head_color, (int(head_x), int(head_y)), int(head_r))
         pygame.draw.circle(surface, BLACK, (int(head_x), int(head_y)), int(head_r), 2)
         
         # Draw eyes
